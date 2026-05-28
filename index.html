@@ -1,12 +1,20 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>slime-rng-calculator</title>
+    <link rel="icon" type="image/png" href="./src/assets/icons/logo-slime.png" />    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Slime RNG Simulator - Multiplier Odds Dashboard</title>
+
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-KW94GCZJRN"></script>
+    <script>
+      window.dataLayer = window.dataLayer || [];
+      function gtag(){dataLayer.push(arguments);}
+      gtag('js', new Date());
+
+      gtag('config', 'G-KW94GCZJRN');
+    </script>
   </head>
-  <body>
+  <body class="bg-slate-950 text-slate-100">
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
