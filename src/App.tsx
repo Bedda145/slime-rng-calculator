@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useSlimes } from './hooks/useSlimes';
 import { AVAILABLE_POTIONS, SLIME_REGISTRY } from './data/dropRates';
 import type { Slime } from './types/game';
+import type { SlimeType } from './services/wikiApi';
 
 // Peripheral Assets
 import LogoSlime from './assets/icons/logo-slime.png';
@@ -12,8 +13,14 @@ import ImgUltraLuckBoost from './assets/icons/Ultra_Luck_Boost.png';
 
 import { HelpCircle } from 'lucide-react';
 
+// FIXED: Added higher number suffixes (Qi, Sx, Sp, Oc, No, Dc)
 function formatNumber(num: number | string): string {
   if (typeof num === 'string') return num;
+  if (num >= 1e30) return `${(num / 1e30).toFixed(2).replace(/\.00$/, '')}No`;
+  if (num >= 1e27) return `${(num / 1e27).toFixed(2).replace(/\.00$/, '')}Oc`;
+  if (num >= 1e24) return `${(num / 1e24).toFixed(2).replace(/\.00$/, '')}Sp`;
+  if (num >= 1e21) return `${(num / 1e21).toFixed(2).replace(/\.00$/, '')}Sx`;
+  if (num >= 1e18) return `${(num / 1e18).toFixed(2).replace(/\.00$/, '')}Qi`;
   if (num >= 1e15) return `${(num / 1e15).toFixed(2).replace(/\.00$/, '')}Qd`;
   if (num >= 1e12) return `${(num / 1e12).toFixed(2).replace(/\.00$/, '')}T`;
   if (num >= 1e9) return `${(num / 1e9).toFixed(2).replace(/\.00$/, '')}B`;
@@ -40,28 +47,80 @@ function getTierStyle(tier: string): { bg: string; text: string; border: string;
 export default function App() {
   const { slimes, loading } = useSlimes();
   
-  // Fixed: Reset standard initialization baseline state from 226600 to 0
   const [baseLuck, setBaseLuck] = useState<number>(0);
   const [activePotion, setActivePotion] = useState<string>('ultra');
+  
+  type SizeVariant = 'Base' | 'Big' | 'Huge';
+  const [sizeVariant, setSizeVariant] = useState<SizeVariant>('Base');
+  const [shinyOn, setShinyOn] = useState(false);
+  const [invertedOn, setInvertedOn] = useState(false);
 
-  // Math Conversion Matrix: Base Luck Input + Potion Bonus
+  // FIXED: Correct combo math formula
+  // Each mutation acts as a multiplier on Base: mutMultiplier = mutOdds / baseOdds
+  // Combined = Base × mult1 × mult2 × ... = product(selectedOdds) / Base^(n-1)
+  // Verified: Big Shiny Petal = 3.91B × 9.775B / 39.1M = 977.5B ≈ 979B (matches game)
+  function getCombinedOdds(odds: typeof SLIME_REGISTRY[0]['odds']): number | string {
+  const SHINY_MULT = 250;
+  const INVERTED_MULT = 2500;
+
+  // Start with the size odds from the registry
+  const sizeOdds = sizeVariant === 'Big' ? odds.Big
+    : sizeVariant === 'Huge' ? odds.Huge
+    : odds.Base;
+
+  if (typeof sizeOdds !== 'number') return sizeOdds;
+
+  // Apply fixed mutation multipliers
+  let result = sizeOdds;
+  if (shinyOn)    result *= SHINY_MULT;
+  if (invertedOn) result *= INVERTED_MULT;
+
+  return Math.round(result);
+}
+
+  function getImageKey(): SlimeType {
+    if (sizeVariant === 'Huge') {
+      if (shinyOn && invertedOn) return 'HugeShinyInverted';
+      if (shinyOn)               return 'HugeShiny';
+      if (invertedOn)            return 'HugeInverted';
+      return 'Huge';
+    }
+    if (sizeVariant === 'Big') {
+      if (shinyOn && invertedOn) return 'BigShinyInverted';
+      if (shinyOn)               return 'BigShiny';
+      if (invertedOn)            return 'BigInverted';
+      return 'Big';
+    }
+    if (shinyOn && invertedOn)   return 'ShinyInverted';
+    if (shinyOn)                 return 'Shiny';
+    if (invertedOn)              return 'Inverted';
+    return 'Base';
+  }
+
+  // FIXED: Correct naming order — matches the game: Shiny → Size → Inverted → Name
+  // e.g. "Shiny Huge Inverted Goopy", "Shiny Big Goopy", "Inverted Goopy"
+  function buildTitle(slimeTitle: string): string {
+    const parts: string[] = [];
+    if (shinyOn)                    parts.push('Shiny');
+    if (sizeVariant !== 'Base')     parts.push(sizeVariant);
+    if (invertedOn)                 parts.push('Inverted');
+    return parts.length ? `${parts.join(' ')} ${slimeTitle}` : slimeTitle;
+  }
+
   const chosenPotion = AVAILABLE_POTIONS.find(p => p.id === activePotion);
   const potionBonus = chosenPotion?.luckBonus || 0;
-  
-  // Guard against calculation division errors if overall parameters sit at 0
   const totalLuck = Math.max(1, baseLuck + potionBonus);
 
   return (
-    <div className="min-h-screen px-4 py-8 font-sans antialiased relative overflow-x-hidden">
+    <div className="min-h-screen font-sans antialiased relative overflow-x-hidden">
       
-      {/* BACKGROUND FLOATING GRADIENT LIGHTS */}
+      {/* BACKGROUND DEPT ELEMENTS */}
       <div className="absolute top-1/4 left-10 w-96 h-96 bg-purple-500/5 rounded-full blur-[140px] pointer-events-none" />
       <div className="absolute bottom-1/4 right-10 w-96 h-96 bg-emerald-500/5 rounded-full blur-[140px] pointer-events-none" />
 
-      {/* Fixed Tailwind v4 Class warning: max-w-[1300px] -> max-w-325 */}
-      <div className="max-w-325 mx-auto space-y-5 relative z-10">
+      <main className="mx-auto max-w-7xl px-4 py-8 w-full space-y-5 relative z-10">
         
-        {/* APP HEADER CONTENT */}
+        {/* BRAND NAVIGATION HEADER */}
         <header className="flex items-center gap-3.5 border-b border-slate-900/60 pb-4">
           <img src={LogoSlime} alt="Main Game Logo" className="w-12 h-12 object-contain" />
           <div>
@@ -74,16 +133,16 @@ export default function App() {
           </div>
         </header>
 
-        {/* SIDE-BY-SIDE INTERFACE CONTAINER GRIDS */}
-        <div className="grid grid-cols-1 lg:grid-cols-[38%_62%] gap-5 items-start">
+        {/* TWO COLUMN GRID HOUSING */}
+        <div className="grid grid-cols-1 lg:grid-cols-[35%_65%] gap-6 items-start">
           
-          {/* CONTROL MODULE CONSOLES */}
+          {/* COLUMN 1: LEFT SIDE CONTROL PANEL MODULES */}
           <div className="space-y-4">
             
-            {/* CORE LUCK FORM BLOCK */}
+            {/* CURRENT BASE INPUT COMPONENT */}
             <section className="bg-slate-900/95 backdrop-blur-md p-5 rounded-2xl border border-slate-800/80 shadow-2xl space-y-4">
               <h2 className="text-xs font-black text-emerald-400 uppercase tracking-widest flex items-center gap-2">
-                <img src={IconClover} alt="Clover Vector" className="w-5 h-5 object-contain" /> 
+                <img src={IconClover} alt="Clover Icon" className="w-10 h-10 object-contain" /> 
                 Luck Configuration
               </h2>
 
@@ -119,18 +178,18 @@ export default function App() {
               </div>
             </section>
 
-            {/* POTIONS BOOSTER BLOCKS */}
+            {/* TEMPORARY BOOST POTIONS LAYOUT PANEL */}
             <section className="bg-slate-900/95 backdrop-blur-md p-5 rounded-2xl border border-slate-800/80 shadow-2xl space-y-3">
               <div className="flex flex-col">
                 <span className="text-xs font-bold text-slate-200">Temporary Boosts</span>
                 <span className="text-[11px] font-semibold text-slate-400">Potions stacked into master system formulas</span>
               </div>
               
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-3 gap-3 w-full">
                 <button
                   type="button"
                   onClick={() => setActivePotion('')}
-                  className={`h-22 rounded-xl border flex flex-col items-center justify-center text-center p-1 transition-all duration-200 transform hover:-translate-y-0.5 cursor-pointer ${
+                  className={`rounded-xl border flex flex-col items-center justify-center text-center p-1 transition-all duration-200 transform hover:-translate-y-0.5 cursor-pointer ${
                     activePotion === '' 
                       ? 'bg-slate-950 border-slate-400 shadow-[0_4px_10px_rgba(255,255,255,0.06)]' 
                       : 'bg-slate-950/30 border-slate-800 hover:border-slate-700'
@@ -149,8 +208,8 @@ export default function App() {
 
                   let borders = 'bg-slate-950/30 border-slate-800 hover:border-slate-700';
                   if (isSelected) {
-                    if (potion.colorTheme === 'green') borders = 'border-emerald-400 shadow-[0_4px_12px_rgba(52,211,153,0.2)] bg-slate-950';
-                    else borders = 'border-purple-400 shadow-[0_4px_12px_rgba(192,132,252,0.2)] bg-slate-950';
+                    if (potion.colorTheme === 'green') borders = 'border-emerald-400 bg-emerald-950/60 shadow-[0_4px_12px_rgba(52,211,153,0.25)]';
+                    else borders = 'border-purple-400 bg-purple-950/60 shadow-[0_4px_12px_rgba(192,132,252,0.25)]';
                   }
 
                   return (
@@ -160,11 +219,9 @@ export default function App() {
                       onClick={() => setActivePotion(potion.id)}
                       className={`h-22 rounded-xl border flex flex-col items-center justify-center text-center p-1 transition-all duration-200 transform hover:-translate-y-0.5 cursor-pointer ${borders}`}
                     >
-                      <img src={imgAsset} alt={potion.name} className="w-7 h-7 object-contain mb-1" />
+                      <img src={imgAsset} alt={potion.name} className="w-20 h-11 object-contain mb-1" />
                       <span className="text-[11px] font-black text-slate-200 truncate w-full px-0.5">{potion.name}</span>
-                      <span className={`text-[9px] font-black mt-0.5 ${
-                        potion.colorTheme === 'green' ? 'text-emerald-400' : 'text-purple-400'
-                      }`}>
+                      <span className="text-[9px] font-black mt-0.5 text-white">
                         {potion.label}
                       </span>
                     </button>
@@ -173,10 +230,10 @@ export default function App() {
               </div>
             </section>
 
-            {/* TOTAL INTEGRATED CALCULATOR SCORE COMPONENT CONTAINER */}
+            {/* TOTAL INTEGRATED SCORE MODULE VALUE BAR */}
             <div className="bg-slate-900/95 backdrop-blur-md border border-slate-800/80 rounded-xl py-3 px-4 flex items-center justify-between shadow-lg h-12">
               <div className="flex items-center gap-2">
-                <img src={IconClover} alt="Global Clover Indicator" className="w-5 h-5 object-contain" />
+                <img src={IconClover} alt="Clover Summary Indicator" className="w-10 h-10 object-contain" />
                 <span className="text-xs font-black uppercase tracking-wider text-slate-400">Total Combined Luck Score</span>
               </div>
               <div className="text-xl font-black text-yellow-400 tracking-tight pr-1 leading-none h-full flex items-center">
@@ -185,30 +242,81 @@ export default function App() {
             </div>
           </div>
 
-          {/* RIGHT VIEW TILES: SCROLL FEED DATA PORTAL */}
-          {/* Fixed Tailwind class warning: max-h-[420px] -> max-h-105 */}
-          <section className="bg-slate-900/95 backdrop-blur-md p-5 rounded-2xl border border-slate-800/80 shadow-2xl space-y-3 h-full flex flex-col">
-            <h2 className="text-xs font-black text-emerald-400 uppercase tracking-widest flex items-center gap-2">
-              <img src={IconDice} alt="Dice Matrix Icon" className="w-5 h-5 object-contain" /> 
-              Adjusted Odds Output Feed
-            </h2>
+          {/* COLUMN 2: RIGHT SIDE BALANCED OUTPUT FEED SECTION */}
+          <section className="bg-slate-900/95 backdrop-blur-md p-5 rounded-2xl border border-slate-800/80 shadow-2xl space-y-4 h-full flex flex-col">
+            
+            {/* OUTPUT CONTROL ACTIONS BAR */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800/60 pb-3">
+              <h2 className="text-xs font-black text-emerald-400 uppercase tracking-widest flex items-center gap-2">
+                <img src={IconDice} alt="Dice Matrix Icon" className="w-7 h-7 object-contain" /> 
+                Adjusted Odds Output Feed
+              </h2> 
+
+              {/* Layout Controls */}
+              <div className="flex items-center gap-2 flex-wrap max-w-full">
+                {/* Size — mutually exclusive */}
+                <div className="flex items-center bg-slate-950 p-1 rounded-xl border border-slate-800 overflow-x-auto">
+                  {(['Base', 'Big', 'Huge'] as SizeVariant[]).map((v) => (
+                    <button
+                      key={v}
+                      type="button"
+                      onClick={() => setSizeVariant(v)}
+                      className={`px-3 py-1 text-[10px] font-black uppercase tracking-wider rounded-lg transition-all cursor-pointer ${
+                        sizeVariant === v 
+                          ? 'bg-slate-800 border border-slate-700 text-white shadow-md' 
+                          : 'text-slate-400 hover:text-slate-200'
+                      }`}
+                    >
+                      {v}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Modifiers — independent toggles */}
+                <button
+                  type="button"
+                  onClick={() => setShinyOn(s => !s)}
+                  className={`px-3 py-1.5 text-[10px] font-black uppercase tracking-wider rounded-lg transition-all border cursor-pointer ${
+                    shinyOn
+                      ? 'bg-amber-500/15 border-amber-400 text-amber-300 shadow-[0_0_12px_rgba(251,191,36,0.15)]'
+                      : 'bg-slate-950 border-slate-800 text-slate-500 hover:text-slate-300'
+                  }`}
+                >
+                  ✦ Shiny
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setInvertedOn(i => !i)}
+                  className={`px-3 py-1.5 text-[10px] font-black uppercase tracking-wider rounded-lg transition-all border cursor-pointer ${
+                    invertedOn
+                      ? 'bg-violet-500/15 border-violet-400 text-violet-300 shadow-[0_0_12px_rgba(139,92,246,0.15)]'
+                      : 'bg-slate-950 border-slate-800 text-slate-500 hover:text-slate-300'
+                  }`}
+                >
+                  ✦ Inverted
+                </button>
+              </div>
+            </div>
 
             {loading ? (
               <div className="py-32 text-center text-slate-400 text-xs font-black tracking-wider animate-pulse flex-1 flex items-center justify-center">
-                Connecting to MediaWiki pageimage redirects dataset...
+                Connecting to live MediaWiki data endpoints...
               </div>
             ) : (
-              <div className="grid grid-cols-1 gap-1.5 overflow-y-auto pr-1 border border-slate-950/40 p-1.5 rounded-xl bg-slate-950/30 custom-feed-scrollbar max-h-105">
+              <div className="grid grid-cols-1 gap-1.5 overflow-y-auto pr-2 border border-slate-950/40 p-1.5 rounded-xl bg-slate-950/30 custom-feed-scrollbar h-[600px]">
                 {slimes.map((slime: Slime) => {
                   const config = SLIME_REGISTRY.find(s => s.title.toLowerCase().trim() === slime.title.toLowerCase().trim());
                   if (!config) return null;
 
                   const style = getTierStyle(config.tier);
-                  const isNumericOdds = typeof config.baseOdds === 'number';
                   
+                  const exactBaseOdds = getCombinedOdds(config.odds);
+                  const isNumericOdds = typeof exactBaseOdds === 'number';
                   const adjustedOdds = isNumericOdds 
-                    ? Math.max(1, Math.round((config.baseOdds as number) / totalLuck)) 
+                    ? Math.max(1, Math.round((exactBaseOdds as number) / totalLuck)) 
                     : null;
+                  const formattedTitle = buildTitle(slime.title);
 
                   return (
                     <div 
@@ -217,9 +325,13 @@ export default function App() {
                     >
                       <div className="flex items-center gap-3">
                         <div className="w-10 h-10 bg-slate-900 rounded-lg border border-slate-800 flex items-center justify-center overflow-hidden p-0.5">
-                          {slime.imageUrl ? (
+                          {slime.imageUrls ? (
                             <img 
-                              src={slime.imageUrl} 
+                              src={
+                                slime.imageUrls?.[getImageKey()]
+                                ?? slime.imageUrls?.[sizeVariant !== 'Base' ? sizeVariant : invertedOn ? 'Inverted' : shinyOn ? 'Shiny' : 'Base']
+                                ?? slime.imageUrls?.Base
+                              } 
                               alt={slime.title} 
                               className="w-full h-full object-contain transform group-hover:scale-110 transition-transform duration-200" 
                             />
@@ -229,23 +341,24 @@ export default function App() {
                         </div>
                         <div>
                           <div className="flex items-center gap-2">
-                            <h3 className="font-extrabold text-slate-200 text-xs tracking-wide">{slime.title}</h3>
+                            <h3 className="font-extrabold text-slate-200 text-xs tracking-wide">{formattedTitle}</h3>
                             <span className={`text-[8px] font-black uppercase px-1.5 py-0.5 border rounded-md ${style.bg} ${style.text} ${style.border}`}>
                               {config.tier}
                             </span>
                           </div>
                           <p className="text-[10px] font-bold text-slate-400 mt-0.5">
-                            Base: 1 / {formatNumber(config.baseOdds)}
+                            Base: {isNumericOdds ? `1 / ${formatNumber(exactBaseOdds)}` : exactBaseOdds}
                           </p>
                         </div>
                       </div>
 
                       <div className="text-right">
                         <div className="text-emerald-400 font-mono font-black text-sm tracking-tight">
-                          1 / {adjustedOdds ? formatNumber(adjustedOdds) : formatNumber(config.baseOdds)}
+                          {isNumericOdds ? `1 / ${formatNumber(adjustedOdds!)}` : exactBaseOdds}
                         </div>
-                        <div className="text-[10px] font-bold text-slate-400 mt-0.5">
-                          Expected: <span className="text-slate-300 font-extrabold">{adjustedOdds ? adjustedOdds.toLocaleString() : "—"}</span>
+                        <div className="text-[10px] font-bold text-slate-400 mt-0.5 flex items-center gap-1 justify-end">
+                          <img src={IconDice} alt="" className="w-3 h-3 object-contain opacity-60" />
+                          <span className="text-slate-300 font-extrabold">{adjustedOdds ? adjustedOdds.toLocaleString() : "—"}</span>
                         </div>
                       </div>
                     </div>
@@ -256,7 +369,7 @@ export default function App() {
           </section>
 
         </div>
-      </div>
+      </main>
     </div>
   );
 }

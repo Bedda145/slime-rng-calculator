@@ -19,7 +19,7 @@ export function useSlimes() {
           return {
             pageid: index,
             title: slime.title,
-            imageUrl: imageMap[lookupKey] || null
+            imageUrls: imageMap[lookupKey] || null
           };
         });
 
