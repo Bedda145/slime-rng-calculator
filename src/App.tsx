@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useSlimes } from './hooks/useSlimes';
 import { AVAILABLE_POTIONS, SLIME_REGISTRY } from './data/dropRates';
 import type { Slime } from './types/game';
@@ -11,9 +11,8 @@ import IconDice from './assets/icons/icon-dice.png';
 import ImgLuckBoost from './assets/icons/Luck_Boost.png';
 import ImgUltraLuckBoost from './assets/icons/Ultra_Luck_Boost.png';
 
-import { HelpCircle } from 'lucide-react';
+import { HelpCircle, Search, RotateCcw } from 'lucide-react';
 
-// FIXED: Added higher number suffixes (Qi, Sx, Sp, Oc, No, Dc)
 function formatNumber(num: number | string): string {
   if (typeof num === 'string') return num;
   if (num >= 1e30) return `${(num / 1e30).toFixed(2).replace(/\.00$/, '')}No`;
@@ -48,35 +47,33 @@ export default function App() {
   const { slimes, loading } = useSlimes();
   
   const [baseLuck, setBaseLuck] = useState<number>(0);
-  const [activePotion, setActivePotion] = useState<string>('ultra');
+  const [activePotion, setActivePotion] = useState<string>('');
+  const [searchQuery, setSearchQuery] = useState('');
   
   type SizeVariant = 'Base' | 'Big' | 'Huge';
   const [sizeVariant, setSizeVariant] = useState<SizeVariant>('Base');
   const [shinyOn, setShinyOn] = useState(false);
   const [invertedOn, setInvertedOn] = useState(false);
 
-  // FIXED: Correct combo math formula
-  // Each mutation acts as a multiplier on Base: mutMultiplier = mutOdds / baseOdds
-  // Combined = Base × mult1 × mult2 × ... = product(selectedOdds) / Base^(n-1)
-  // Verified: Big Shiny Petal = 3.91B × 9.775B / 39.1M = 977.5B ≈ 979B (matches game)
-  function getCombinedOdds(odds: typeof SLIME_REGISTRY[0]['odds']): number | string {
+  // Fixed mutation multipliers (confirmed from in-game data)
   const SHINY_MULT = 250;
   const INVERTED_MULT = 2500;
 
-  // Start with the size odds from the registry
-  const sizeOdds = sizeVariant === 'Big' ? odds.Big
-    : sizeVariant === 'Huge' ? odds.Huge
-    : odds.Base;
+  function getCombinedOdds(odds: typeof SLIME_REGISTRY[0]['odds']): number | string {
+    // Start with size odds from registry
+    const sizeOdds = sizeVariant === 'Big' ? odds.Big
+      : sizeVariant === 'Huge' ? odds.Huge
+      : odds.Base;
 
-  if (typeof sizeOdds !== 'number') return sizeOdds;
+    if (typeof sizeOdds !== 'number') return sizeOdds;
 
-  // Apply fixed mutation multipliers
-  let result = sizeOdds;
-  if (shinyOn)    result *= SHINY_MULT;
-  if (invertedOn) result *= INVERTED_MULT;
+    // Apply fixed mutation multipliers on top
+    let result = sizeOdds;
+    if (shinyOn)    result *= SHINY_MULT;
+    if (invertedOn) result *= INVERTED_MULT;
 
-  return Math.round(result);
-}
+    return Math.round(result);
+  }
 
   function getImageKey(): SlimeType {
     if (sizeVariant === 'Huge') {
@@ -97,8 +94,6 @@ export default function App() {
     return 'Base';
   }
 
-  // FIXED: Correct naming order — matches the game: Shiny → Size → Inverted → Name
-  // e.g. "Shiny Huge Inverted Goopy", "Shiny Big Goopy", "Inverted Goopy"
   function buildTitle(slimeTitle: string): string {
     const parts: string[] = [];
     if (shinyOn)                    parts.push('Shiny');
@@ -110,6 +105,28 @@ export default function App() {
   const chosenPotion = AVAILABLE_POTIONS.find(p => p.id === activePotion);
   const potionBonus = chosenPotion?.luckBonus || 0;
   const totalLuck = Math.max(1, baseLuck + potionBonus);
+
+  // Search filter — matches slime name or tier
+  const filteredSlimes = useMemo(() => {
+    if (!searchQuery.trim()) return slimes;
+    const q = searchQuery.toLowerCase().trim();
+    return slimes.filter((slime: Slime) => {
+      const config = SLIME_REGISTRY.find(s => s.title.toLowerCase().trim() === slime.title.toLowerCase().trim());
+      return (
+        slime.title.toLowerCase().includes(q) ||
+        config?.tier.toLowerCase().includes(q)
+      );
+    });
+  }, [slimes, searchQuery]);
+
+  function handleReset() {
+    setBaseLuck(0);
+    setActivePotion('');
+    setSizeVariant('Base');
+    setShinyOn(false);
+    setInvertedOn(false);
+    setSearchQuery('');
+  }
 
   return (
     <div className="min-h-screen font-sans antialiased relative overflow-x-hidden">
@@ -230,14 +247,26 @@ export default function App() {
               </div>
             </section>
 
-            {/* TOTAL INTEGRATED SCORE MODULE VALUE BAR */}
-            <div className="bg-slate-900/95 backdrop-blur-md border border-slate-800/80 rounded-xl py-3 px-4 flex items-center justify-between shadow-lg h-12">
-              <div className="flex items-center gap-2">
-                <img src={IconClover} alt="Clover Summary Indicator" className="w-10 h-10 object-contain" />
-                <span className="text-xs font-black uppercase tracking-wider text-slate-400">Total Combined Luck Score</span>
-              </div>
-              <div className="text-xl font-black text-yellow-400 tracking-tight pr-1 leading-none h-full flex items-center">
-                {formatNumber(totalLuck)}
+            {/* TOTAL LUCK SCORE — redesigned */}
+            <div className="bg-gradient-to-r from-slate-900/95 via-emerald-950/30 to-slate-900/95 backdrop-blur-md border border-emerald-900/40 rounded-2xl p-4 shadow-lg">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <img src={IconClover} alt="Clover" className="w-8 h-8 object-contain" />
+                  <div>
+                    <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Total Luck</span>
+                    <div className="text-2xl font-black tracking-tight leading-none bg-gradient-to-r from-emerald-400 to-teal-300 bg-clip-text text-transparent">
+                      {formatNumber(totalLuck)}
+                    </div>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleReset}
+                  className="p-2 rounded-lg border border-slate-800 bg-slate-950/60 text-slate-500 hover:text-slate-300 hover:border-slate-700 transition-all cursor-pointer"
+                  title="Reset everything"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                </button>
               </div>
             </div>
           </div>
@@ -299,71 +328,98 @@ export default function App() {
               </div>
             </div>
 
+            {/* SEARCH BAR */}
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-600" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search slimes by name or tier..."
+                className="w-full bg-slate-950/80 border border-slate-800 rounded-xl pl-9 pr-3 py-2 text-xs font-bold text-slate-200 placeholder-slate-600 outline-none focus:border-emerald-500/40 transition-colors"
+              />
+              {searchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setSearchQuery('')}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-600 hover:text-slate-300 text-xs font-black cursor-pointer"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+
             {loading ? (
               <div className="py-32 text-center text-slate-400 text-xs font-black tracking-wider animate-pulse flex-1 flex items-center justify-center">
                 Connecting to live MediaWiki data endpoints...
               </div>
             ) : (
               <div className="grid grid-cols-1 gap-1.5 overflow-y-auto pr-2 border border-slate-950/40 p-1.5 rounded-xl bg-slate-950/30 custom-feed-scrollbar h-[600px]">
-                {slimes.map((slime: Slime) => {
-                  const config = SLIME_REGISTRY.find(s => s.title.toLowerCase().trim() === slime.title.toLowerCase().trim());
-                  if (!config) return null;
+                {filteredSlimes.length === 0 ? (
+                  <div className="py-20 text-center text-slate-500 text-xs font-bold">
+                    No slimes found matching "{searchQuery}"
+                  </div>
+                ) : (
+                  filteredSlimes.map((slime: Slime) => {
+                    const config = SLIME_REGISTRY.find(s => s.title.toLowerCase().trim() === slime.title.toLowerCase().trim());
+                    if (!config) return null;
 
-                  const style = getTierStyle(config.tier);
-                  
-                  const exactBaseOdds = getCombinedOdds(config.odds);
-                  const isNumericOdds = typeof exactBaseOdds === 'number';
-                  const adjustedOdds = isNumericOdds 
-                    ? Math.max(1, Math.round((exactBaseOdds as number) / totalLuck)) 
-                    : null;
-                  const formattedTitle = buildTitle(slime.title);
+                    const style = getTierStyle(config.tier);
+                    
+                    const exactBaseOdds = getCombinedOdds(config.odds);
+                    const isNumericOdds = typeof exactBaseOdds === 'number';
+                    const adjustedOdds = isNumericOdds 
+                      ? Math.max(1, Math.round((exactBaseOdds as number) / totalLuck)) 
+                      : null;
+                    const formattedTitle = buildTitle(slime.title);
 
-                  return (
-                    <div 
-                      key={slime.title} 
-                      className={`bg-slate-950/60 p-2.5 rounded-xl border border-slate-900/60 border-l-4 ${style.borderLeft} flex items-center justify-between shadow-sm group hover:border-slate-800 hover:scale-[1.005] transition-all duration-200`}
-                    >
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 bg-slate-900 rounded-lg border border-slate-800 flex items-center justify-center overflow-hidden p-0.5">
-                          {slime.imageUrls ? (
-                            <img 
-                              src={
-                                slime.imageUrls?.[getImageKey()]
-                                ?? slime.imageUrls?.[sizeVariant !== 'Base' ? sizeVariant : invertedOn ? 'Inverted' : shinyOn ? 'Shiny' : 'Base']
-                                ?? slime.imageUrls?.Base
-                              } 
-                              alt={slime.title} 
-                              className="w-full h-full object-contain transform group-hover:scale-110 transition-transform duration-200" 
-                            />
-                          ) : (
-                            <HelpCircle className="w-4 h-4 text-slate-800" />
-                          )}
-                        </div>
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <h3 className="font-extrabold text-slate-200 text-xs tracking-wide">{formattedTitle}</h3>
-                            <span className={`text-[8px] font-black uppercase px-1.5 py-0.5 border rounded-md ${style.bg} ${style.text} ${style.border}`}>
-                              {config.tier}
-                            </span>
+                    return (
+                      <div 
+                        key={slime.title} 
+                        className={`bg-slate-950/60 p-2.5 rounded-xl border border-slate-900/60 border-l-4 ${style.borderLeft} flex items-center justify-between shadow-sm group hover:border-slate-800 hover:scale-[1.005] transition-all duration-200`}
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 bg-slate-900 rounded-lg border border-slate-800 flex items-center justify-center overflow-hidden p-0.5">
+                            {slime.imageUrls ? (
+                              <img 
+                                src={
+                                  slime.imageUrls?.[getImageKey()]
+                                  ?? slime.imageUrls?.[sizeVariant !== 'Base' ? sizeVariant : invertedOn ? 'Inverted' : shinyOn ? 'Shiny' : 'Base']
+                                  ?? slime.imageUrls?.Base
+                                } 
+                                alt={slime.title} 
+                                className="w-full h-full object-contain transform group-hover:scale-110 transition-transform duration-200" 
+                              />
+                            ) : (
+                              <HelpCircle className="w-4 h-4 text-slate-800" />
+                            )}
                           </div>
-                          <p className="text-[10px] font-bold text-slate-400 mt-0.5">
-                            Base: {isNumericOdds ? `1 / ${formatNumber(exactBaseOdds)}` : exactBaseOdds}
-                          </p>
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <h3 className="font-extrabold text-slate-200 text-xs tracking-wide">{formattedTitle}</h3>
+                              <span className={`text-[8px] font-black uppercase px-1.5 py-0.5 border rounded-md ${style.bg} ${style.text} ${style.border}`}>
+                                {config.tier}
+                              </span>
+                            </div>
+                            <p className="text-[10px] font-bold text-slate-400 mt-0.5">
+                              Base: {isNumericOdds ? `1 / ${formatNumber(exactBaseOdds)}` : exactBaseOdds}
+                            </p>
+                          </div>
                         </div>
-                      </div>
 
-                      <div className="text-right">
-                        <div className="text-emerald-400 font-mono font-black text-sm tracking-tight">
-                          {isNumericOdds ? `1 / ${formatNumber(adjustedOdds!)}` : exactBaseOdds}
-                        </div>
-                        <div className="text-[10px] font-bold text-slate-400 mt-0.5 flex items-center gap-1 justify-end">
-                          <img src={IconDice} alt="" className="w-3 h-3 object-contain opacity-60" />
-                          <span className="text-slate-300 font-extrabold">{adjustedOdds ? adjustedOdds.toLocaleString() : "—"}</span>
+                        <div className="text-right">
+                          <div className="text-emerald-400 font-mono font-black text-sm tracking-tight">
+                            {isNumericOdds ? `1 / ${formatNumber(adjustedOdds!)}` : exactBaseOdds}
+                          </div>
+                          <div className="text-[10px] font-bold text-slate-400 mt-0.5 flex items-center gap-1 justify-end">
+                            <img src={IconDice} alt="" className="w-3 h-3 object-contain opacity-60" />
+                            <span className="text-slate-300 font-extrabold">{adjustedOdds ? adjustedOdds.toLocaleString() : "—"}</span>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  );
-                })}
+                    );
+                  })
+                )}
               </div>
             )}
           </section>
